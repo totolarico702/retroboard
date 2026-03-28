@@ -1,5 +1,6 @@
 package com.cabinskollar.retroboard
 
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.inputmethodservice.InputMethodService
 import android.inputmethodservice.Keyboard
@@ -12,6 +13,7 @@ import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
 import com.cabinskollar.retroboard.RetroKeyboardView
+
 class RetroboardIME : InputMethodService(), KeyboardView.OnKeyboardActionListener {
 
     private lateinit var keyboardAzerty: Keyboard
@@ -22,6 +24,8 @@ class RetroboardIME : InputMethodService(), KeyboardView.OnKeyboardActionListene
     private var clipboard: String = ""
     private var arrowsVisible = false
     private var isSymbols = false
+    private var isShifted = false
+    private var ctrlPressed = false
     private var spacePressTime = 0L
     private val LONG_PRESS_MS = 500L
 
@@ -35,7 +39,7 @@ class RetroboardIME : InputMethodService(), KeyboardView.OnKeyboardActionListene
         keyboardView.keyboard = keyboardAzerty
         keyboardView.setOnKeyboardActionListener(this)
         keyboardView.isPreviewEnabled = false
-
+        view.setPadding(0, 0, 0, getNavigationBarHeight())
         arrowRow = view.findViewById(R.id.arrow_row)
 
         view.findViewById<Button>(R.id.btn_left).setOnClickListener {
@@ -50,8 +54,8 @@ class RetroboardIME : InputMethodService(), KeyboardView.OnKeyboardActionListene
         view.findViewById<Button>(R.id.btn_down).setOnClickListener {
             sendDownUpKeyEvents(KeyEvent.KEYCODE_DPAD_DOWN)
         }
-        view.findViewById<Button>(R.id.btn_mic).setOnClickListener {
-            launchVoiceInput()
+        view.findViewById<Button>(R.id.btn_ctrl).setOnClickListener {
+            ctrlPressed = !ctrlPressed
         }
         view.findViewById<Button>(R.id.btn_skin).setOnClickListener {
             SkinManager.next()
@@ -60,7 +64,6 @@ class RetroboardIME : InputMethodService(), KeyboardView.OnKeyboardActionListene
 
         keyboardView.setOnTouchListener { _, event ->
             handleSpaceLongPress(event)
-            false
         }
 
         applySkin(view)
@@ -81,13 +84,14 @@ class RetroboardIME : InputMethodService(), KeyboardView.OnKeyboardActionListene
                 setTextColor(t.arrowText)
             }
         }
-        listOf(R.id.btn_mic, R.id.btn_skin).forEach {
+        listOf(R.id.btn_ctrl, R.id.btn_skin).forEach {
             view.findViewById<Button>(it).apply {
                 background = roundedDrawable(t.actionBg, t.actionBg, radius)
                 setTextColor(t.actionText)
             }
         }
     }
+
     override fun onKey(primaryCode: Int, keyCodes: IntArray?) {
         val ic = currentInputConnection ?: return
         when (primaryCode) {
@@ -99,7 +103,16 @@ class RetroboardIME : InputMethodService(), KeyboardView.OnKeyboardActionListene
                     ic.deleteSurroundingText(1, 0)
                 }
             }
-            -1   -> { }
+            -200 -> {
+                isShifted = !isShifted
+                android.widget.Toast.makeText(
+                    applicationContext,
+                    "DBG Shift: isShifted=$isShifted",
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+                keyboardView.shiftActive = isShifted
+                keyboardView.invalidateAllKeys()
+            }
             10   -> ic.commitText("\n", 1)
             32   -> ic.commitText(" ", 1)
             -100 -> {
@@ -119,14 +132,32 @@ class RetroboardIME : InputMethodService(), KeyboardView.OnKeyboardActionListene
                 keyboardView.keyboard = keyboardAzerty
                 keyboardView.invalidateAllKeys()
             }
+            -104 -> {
+                ctrlPressed = !ctrlPressed
+            }
             else -> {
-                val shift = keyboardAzerty.isShifted
-                val char = primaryCode.toChar()
-                val output = if (shift) char.uppercaseChar() else char
-                ic.commitText(output.toString(), 1)
-                if (shift) {
-                    keyboardAzerty.isShifted = false
-                    keyboardView.invalidateAllKeys()
+                if (ctrlPressed) {
+                    when (primaryCode.toChar().lowercaseChar()) {
+                        'a' -> { ic.performContextMenuAction(android.R.id.selectAll); ctrlPressed = false }
+                        'c' -> { ic.performContextMenuAction(android.R.id.copy); ctrlPressed = false }
+                        'v' -> { ic.performContextMenuAction(android.R.id.paste); ctrlPressed = false }
+                        'z' -> {
+                            ic.sendKeyEvent(KeyEvent(0, 0, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_Z, 0, KeyEvent.META_CTRL_ON))
+                            ic.sendKeyEvent(KeyEvent(0, 0, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_Z, 0, KeyEvent.META_CTRL_ON))
+                            ctrlPressed = false
+                        }
+                        'x' -> { ic.performContextMenuAction(android.R.id.cut); ctrlPressed = false }
+                        else -> ctrlPressed = false
+                    }
+                } else {
+                    val char = primaryCode.toChar()
+                    val output = if (isShifted) char.uppercaseChar() else char
+                    ic.commitText(output.toString(), 1)
+                    if (isShifted) {
+                        isShifted = false
+                        keyboardView.shiftActive = false
+                        keyboardView.invalidateAllKeys()
+                    }
                 }
             }
         }
@@ -138,12 +169,25 @@ class RetroboardIME : InputMethodService(), KeyboardView.OnKeyboardActionListene
             event.x >= k.x && event.x <= k.x + k.width &&
                     event.y >= k.y && event.y <= k.y + k.height &&
                     k.codes.firstOrNull() == 32
-        } ?: return false
+        }
+        if (key == null) return false
 
         when (event.action) {
-            MotionEvent.ACTION_DOWN -> spacePressTime = SystemClock.elapsedRealtime()
+            MotionEvent.ACTION_DOWN -> {
+                spacePressTime = SystemClock.elapsedRealtime()
+                android.widget.Toast.makeText(
+                    applicationContext,
+                    "DBG Space DOWN",
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+            }
             MotionEvent.ACTION_UP -> {
                 val held = SystemClock.elapsedRealtime() - spacePressTime
+                android.widget.Toast.makeText(
+                    applicationContext,
+                    "DBG Space UP held=${held}ms (seuil=${LONG_PRESS_MS}ms)",
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
                 if (held >= LONG_PRESS_MS) {
                     toggleArrowRow()
                     return true
@@ -158,14 +202,6 @@ class RetroboardIME : InputMethodService(), KeyboardView.OnKeyboardActionListene
         arrowRow.visibility = if (arrowsVisible) View.VISIBLE else View.GONE
     }
 
-    private fun launchVoiceInput() {
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "fr-FR")
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        startActivity(intent)
-    }
     private fun roundedDrawable(colorTop: Int, colorBot: Int, radius: Float): android.graphics.drawable.GradientDrawable {
         return android.graphics.drawable.GradientDrawable().apply {
             shape = android.graphics.drawable.GradientDrawable.RECTANGLE
@@ -173,6 +209,11 @@ class RetroboardIME : InputMethodService(), KeyboardView.OnKeyboardActionListene
             orientation = android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM
             cornerRadius = radius
         }
+    }
+
+    private fun getNavigationBarHeight(): Int {
+        val resourceId = resources.getIdentifier("navigation_bar_height", "dimen", "android")
+        return if (resourceId > 0) resources.getDimensionPixelSize(resourceId) else 0
     }
     override fun onText(text: CharSequence) {}
     override fun swipeLeft() {}

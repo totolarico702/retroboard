@@ -6,8 +6,6 @@
     android:orientation="vertical"
     android:background="#2a2a2a">
 
-
-
     <com.cabinskollar.retroboard.RetroKeyboardView
         android:id="@+id/keyboard_view"
         android:layout_width="match_parent"
@@ -31,9 +29,9 @@
         android:background="#1e2430"
         android:padding="3dp">
 
-        <Button android:id="@+id/btn_mic"
+        <Button android:id="@+id/btn_ctrl"
             android:layout_width="0dp" android:layout_height="44dp" android:layout_weight="1"
-            android:text="🎤" android:textSize="16sp"
+            android:text="CTRL" android:textSize="12sp"
             android:background="#2a2a3a" android:textColor="#d4d0c8" android:layout_margin="2dp" />
         <Button android:id="@+id/btn_left"
             android:layout_width="0dp" android:layout_height="44dp" android:layout_weight="1"
