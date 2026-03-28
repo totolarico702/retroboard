@@ -8,7 +8,7 @@
     <!-- ROW 1 : symboles courants -->
     <Row>
         <Key android:codes="33"  android:keyLabel="!" />
-        <Key android:codes="64"  android:keyLabel="@" />
+        <Key android:codes="64"  android:keyLabel="\@" />
         <Key android:codes="35"  android:keyLabel="#" />
         <Key android:codes="36"  android:keyLabel="$" />
         <Key android:codes="37"  android:keyLabel="%" />
@@ -44,7 +44,7 @@
         <Key android:codes="94"  android:keyLabel="^" />
         <Key android:codes="126" android:keyLabel="~" />
         <Key android:codes="124" android:keyLabel="|" />
-        <Key android:codes="63"  android:keyLabel="?" />
+        <Key android:codes="63"  android:keyLabel="\?" />
     </Row>
 
     <!-- ROW 4 -->
